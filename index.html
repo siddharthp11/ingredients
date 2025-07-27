@@ -1,0 +1,91 @@
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="toolbar">
+      <button id="record">Record</button>
+      <button id="stop" disabled>Stop</button>
+      <button id="play" disabled>Play</button>
+      <button id="upload" disabled>Upload & Transform</button>
+    </div>
+    <div id="content">
+      <span id="loading" class="loading" id="transcription-loading"></span>
+      <div id="transcription"></div>
+    </div>
+    <script>
+      let mediaRecorder;
+      let audioChunks = [];
+      let audioBlob;
+      const recordBtn = document.getElementById("record");
+      const stopBtn = document.getElementById("stop");
+      const playBtn = document.getElementById("play");
+      const uploadBtn = document.getElementById("upload");
+      const loadingIndicator = document.getElementById("transcription-loading");
+
+      recordBtn.onclick = async () => {
+        audioChunks = [];
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.start();
+        recordBtn.disabled = true;
+        stopBtn.disabled = false;
+        playBtn.disabled = true;
+        uploadBtn.disabled = true;
+        mediaRecorder.ondataavailable = (e) => {
+          audioChunks.push(e.data);
+        };
+        mediaRecorder.onstop = () => {
+          audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+          playBtn.disabled = false;
+          uploadBtn.disabled = false;
+        };
+      };
+
+      stopBtn.onclick = () => {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop();
+        }
+        recordBtn.disabled = false;
+        stopBtn.disabled = true;
+      };
+
+      playBtn.onclick = () => {
+        const audioElem = document.createElement("audio");
+        audioElem.src = URL.createObjectURL(audioBlob);
+        audioElem.controls = true;
+        document.body.appendChild(audioElem);
+        audioElem.play();
+        audioElem.onended = () => {
+          document.body.removeChild(audioElem);
+        };
+      };
+
+      uploadBtn.onclick = async () => {
+        if (!audioBlob) return;
+        uploadBtn.disabled = true;
+        const formData = new FormData();
+        formData.append("file", audioBlob, "recording.webm");
+        try {
+          const response = await fetch("http://localhost:8000/process-audio", {
+            method: "POST",
+            body: formData,
+          });
+          if (!response.ok) throw new Error("Failed to process audio");
+          const data = await response.json();
+          const transcription = document.getElementById("transcription");
+          transcription.textContent = data.transcription;
+        } catch (err) {
+          alert("Error: " + err.message);
+        } finally {
+          uploadBtn.disabled = false;
+        }
+      };
+    </script>
+  </body>
+</html>
